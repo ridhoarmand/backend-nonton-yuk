@@ -1,7 +1,7 @@
 services:
-  backend-nonton-yuks:
-    image: ghcr.io/ridhoarmand/backend-nonton-yuks:latest
-    container_name: backend-nonton-yuks
+  backend-nonton-yuk:
+    image: ghcr.io/ridhoarmand/backend-nonton-yuk:latest
+    container_name: backend-nonton-yuk
     expose:
       - "8080"
     environment:

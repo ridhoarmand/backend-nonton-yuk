@@ -57,29 +57,29 @@ jobs:
           platforms: linux/amd64
           load: true
           push: false
-          tags: localhost/backend-nonton-yuks:ci
-          cache-from: type=gha,scope=backend-nonton-yuks
+          tags: localhost/backend-nonton-yuk:ci
+          cache-from: type=gha,scope=backend-nonton-yuk
 
       - name: Smoke test container
         env:
           NONTONIN_API_TOKEN: ci-smoke-only-token-0000000000000000
         run: |
-          docker run -d --name backend-nonton-yuks-ci \
+          docker run -d --name backend-nonton-yuk-ci \
             --init --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m \
             --cap-drop ALL --security-opt no-new-privileges \
             --pids-limit 32 --memory 80m --cpus 1 \
             --log-driver local --log-opt max-size=1m --log-opt max-file=2 \
             -e NONTONIN_API_TOKEN -p 127.0.0.1:18080:8080 \
-            localhost/backend-nonton-yuks:ci
+            localhost/backend-nonton-yuk:ci
           for i in $(seq 1 18); do
-            status=$(docker inspect --format '{{.State.Status}}' backend-nonton-yuks-ci)
-            if [ "$status" != running ]; then docker logs backend-nonton-yuks-ci; exit 1; fi
-            state=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' backend-nonton-yuks-ci)
+            status=$(docker inspect --format '{{.State.Status}}' backend-nonton-yuk-ci)
+            if [ "$status" != running ]; then docker logs backend-nonton-yuk-ci; exit 1; fi
+            state=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' backend-nonton-yuk-ci)
             if [ "$state" = healthy ]; then break; fi
-            if [ "$state" = unhealthy ]; then docker logs backend-nonton-yuks-ci; exit 1; fi
+            if [ "$state" = unhealthy ]; then docker logs backend-nonton-yuk-ci; exit 1; fi
             sleep 5
           done
-          if [ "$state" != healthy ]; then docker logs backend-nonton-yuks-ci; exit 1; fi
+          if [ "$state" != healthy ]; then docker logs backend-nonton-yuk-ci; exit 1; fi
           NONTONIN_API_TOKEN="$NONTONIN_API_TOKEN" python3 - <<'EOF'
           import http.client, json, os
           token = os.environ['NONTONIN_API_TOKEN']
@@ -106,7 +106,7 @@ jobs:
 
       - name: Remove smoke container
         if: always()
-        run: docker rm -f backend-nonton-yuks-ci
+        run: docker rm -f backend-nonton-yuk-ci
 
       - name: Log in to GHCR
         uses: docker/login-action@v4.6.0 # dbcb813823bdd20940b903addbd779551569679f
@@ -122,7 +122,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/ridhoarmand/backend-nonton-yuks:latest
-            ghcr.io/ridhoarmand/backend-nonton-yuks:sha-${{ github.sha }}
-          cache-from: type=gha,scope=backend-nonton-yuks
-          cache-to: type=gha,scope=backend-nonton-yuks,mode=min
+            ghcr.io/ridhoarmand/backend-nonton-yuk:latest
+            ghcr.io/ridhoarmand/backend-nonton-yuk:sha-${{ github.sha }}
+          cache-from: type=gha,scope=backend-nonton-yuk
+          cache-to: type=gha,scope=backend-nonton-yuk,mode=min

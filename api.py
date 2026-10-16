@@ -789,7 +789,7 @@ class ApiServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = 'NontoninAPI'
+    server_version = 'NontonYukAPI'
     sys_version = ''
 
     def setup(self):

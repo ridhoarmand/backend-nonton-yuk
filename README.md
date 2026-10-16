@@ -1,6 +1,6 @@
-# Nontonin extraction API
+# NontonYuk! extraction API
 
-Backend ekstraksi URL-only untuk aplikasi Nontonin Dulu. Python stdlib + yt-dlp, tanpa framework web, database, browser, FFmpeg, atau penyimpanan video. Server hanya membaca metadata/manifest dan menjawab deskriptor CDN; **tidak pernah** mengambil byte media (tanpa preflight/HEAD/Range ke CDN). Ponsel yang mentransfer video.
+Backend ekstraksi URL-only untuk aplikasi NontonYuk!. Python stdlib + yt-dlp, tanpa framework web, database, browser, FFmpeg, atau penyimpanan video. Server hanya membaca metadata/manifest dan menjawab deskriptor CDN; **tidak pernah** mengambil byte media (tanpa preflight/HEAD/Range ke CDN). Ponsel yang mentransfer video.
 
 ## Deploy produksi (Docker + reverse proxy milik Anda)
 
@@ -14,9 +14,9 @@ docker compose pull
 docker compose up -d --wait --wait-timeout 90 --remove-orphans
 ```
 
-Contoh `Caddyfile` tidak ikut repo (gitignored, berisi domain operator); tulis blok reverse proxy sendiri ke backend `backend-nonton-yuks:8080`, lalu validate/reload proxy. Origin aplikasi = domain Anda; token dari `.env` server dimasukkan sekali ke build aplikasi (env `NONTON_YUKS_API_TOKEN`), tidak di source code. Jangan commit token atau menampilkannya di log/terminal.
+Contoh `Caddyfile` tidak ikut repo (gitignored, berisi domain operator); tulis blok reverse proxy sendiri ke backend `backend-nonton-yuk:8080`, lalu validate/reload proxy. Origin aplikasi = domain Anda; token dari `.env` server dimasukkan sekali ke build aplikasi (env `NONTON_YUKS_API_TOKEN`), tidak di source code. Jangan commit token atau menampilkannya di log/terminal.
 
-Image `ghcr.io/ridhoarmand/backend-nonton-yuks:latest` diterbitkan workflow GitHub tiap push `main` (tes + smoke + build amd64/arm64). Catatan: package GHCR baru default **private**; sekali saja buka Package settings → Change visibility → Public agar pull anonim bisa jalan.
+Image `ghcr.io/ridhoarmand/backend-nonton-yuk:latest` diterbitkan workflow GitHub tiap push `main` (tes + smoke + build amd64/arm64). Catatan: package GHCR baru default **private**; sekali saja buka Package settings → Change visibility → Public agar pull anonim bisa jalan.
 
 ## Kontrak
 

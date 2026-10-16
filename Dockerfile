@@ -24,8 +24,8 @@ EOF
 RUN /tmp/qjs -e 'console.log(1+1)'
 
 FROM python:3.14-slim
-LABEL org.opencontainers.image.source="https://github.com/ridhoarmand/backend-nonton-yuks" \
-      org.opencontainers.image.description="Metadata-only video extraction API for Nonton Yuks"
+LABEL org.opencontainers.image.source="https://github.com/ridhoarmand/backend-nonton-yuk" \
+      org.opencontainers.image.description="Metadata-only video extraction API for NontonYuk!"
 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HOME=/tmp
 WORKDIR /app
