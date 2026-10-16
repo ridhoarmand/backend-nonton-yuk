@@ -599,13 +599,15 @@ def select_streams(info, platform, video_id, source, height=None):
         raise ApiError('unsupportedMedia')
     described = [entry for entry in (describe_format(fmt, platform) for fmt in info.get('formats') or [])
                 if entry is not None]
+    has_audio = any(entry['kind'] == 'audio' for entry in described)
     heights = sorted({entry['height'] for entry in described
-                      if entry['kind'] in ('video', 'muxed') and entry['height'] is not None},
+                      if entry['height'] is not None
+                      and (entry['kind'] == 'muxed' or (entry['kind'] == 'video' and has_audio))},
                      reverse=True)
     if height is not None:
         described = [entry for entry in described
                      if entry['kind'] not in ('video', 'muxed')
-                     or entry['height'] is None or entry['height'] <= height]
+                     or (entry['height'] is not None and entry['height'] <= height)]
     muxed = sorted([entry for entry in described if entry['kind'] == 'muxed'],
                    key=lambda entry: (entry['height'] or -1, entry['fps'] or -1,
                                        entry['bitrate'], entry['legacy']), reverse=True)

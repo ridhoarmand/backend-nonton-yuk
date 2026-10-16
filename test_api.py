@@ -355,10 +355,10 @@ class HeightTests(unittest.TestCase):
                 'uploader': 'Synthetic channel',
                 'thumbnail': 'https://i.ytimg.com/vi/synthetic/hqdefault.jpg',
                 'formats': [
-                    yt_format(YT_VIDEO, vcodec='avc1.64001F', acodec='none',
-                              height=1080, fps=30, format_id='dash1080'),
-                    yt_format(YT_VIDEO, vcodec='avc1.64001F', acodec='none',
-                              height=360, fps=30, format_id='dash360'),
+                    yt_format(YT_VIDEO + '&quality=1080', vcodec='avc1.64001F', acodec='none',
+                              height=1080, fps=30, filesize=9000, format_id='dash1080'),
+                    yt_format(YT_VIDEO + '&quality=360', vcodec='avc1.64001F', acodec='none',
+                              height=360, fps=30, filesize=3000, format_id='dash360'),
                     yt_format(YT_AUDIO, vcodec='none', acodec='mp4a.40.2', height=None,
                               fps=None, abr=128, ext='m4a', format_id='audio'),
                 ]}
@@ -376,6 +376,53 @@ class HeightTests(unittest.TestCase):
         # Full option list still advertised alongside the filtered winner.
         self.assertEqual(result['heights'], [1080, 360])
         self.assertEqual([stream['kind'] for stream in result['streams']], ['video', 'audio'])
+        self.assertEqual(result['streams'][0]['parts'], [YT_VIDEO + '&quality=360'])
+        self.assertEqual(before['streams'][0]['parts'], [YT_VIDEO + '&quality=1080'])
+        self.assertEqual(result['approxBytes'], 4000)
+        self.assertEqual(before['approxBytes'], 10000)
+
+    def test_explicit_height_excludes_unknown_video_and_muxed(self):
+        for acodec in ('none', 'mp4a.40.2'):
+            with self.subTest(acodec=acodec):
+                info = self.multi_yt()
+                info['formats'].insert(0, yt_format(
+                    YT_VIDEO + '&quality=unknown', height=None, acodec=acodec))
+                result = api.select_streams(info, 'youtube', YT_ID, YT_WATCH, 360)
+                self.assertEqual(result['streams'][0]['parts'], [YT_VIDEO + '&quality=360'])
+                with self.assertRaises(api.ApiError) as caught:
+                    api.select_streams(info, 'youtube', YT_ID, YT_WATCH, 144)
+                self.assertEqual(caught.exception.code, 'unsupportedMedia')
+
+    def test_options_exclude_video_without_compatible_audio(self):
+        for audio in ([], [yt_format(YT_AUDIO, vcodec='none', acodec='opus',
+                                    height=None, ext='webm')]):
+            with self.subTest(audio=audio):
+                info = {'id': YT_ID, 'formats': [
+                    yt_format(YT_VIDEO, height=1080),
+                    yt_format(YT_VIDEO + '&quality=360', height=360,
+                              acodec='mp4a.40.2')] + audio}
+                result = api.select_streams(info, 'youtube', YT_ID, YT_WATCH, 360)
+                self.assertEqual(result['heights'], [360])
+                self.assertEqual(result['height'], 360)
+                self.assertEqual(result['streams'][0]['kind'], 'muxed')
+
+    def test_selected_unknown_size_remains_unknown(self):
+        for index in (1, 2):
+            with self.subTest(index=index):
+                info = self.multi_yt()
+                info['formats'][index]['filesize'] = None
+                result = api.select_streams(info, 'youtube', YT_ID, YT_WATCH, 360)
+                self.assertEqual(result['height'], 360)
+                self.assertIsNone(result['approxBytes'])
+
+    def test_legacy_facebook_unknown_height_only_without_bound(self):
+        result = api.select_streams(synthetic_fb(), 'facebook', '123', FB_PAGE)
+        self.assertEqual(result['streams'][0]['parts'], [FB_HD])
+        self.assertEqual(result['heights'], [])
+        self.assertIsNone(result['height'])
+        with self.assertRaises(api.ApiError) as caught:
+            api.select_streams(synthetic_fb(), 'facebook', '123', FB_PAGE, 360)
+        self.assertEqual(caught.exception.code, 'unsupportedMedia')
 
     def test_invalid_height_rejected(self):
         for bad in (0, -1, '720', True, False, 7.5, None.__class__):

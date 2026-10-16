@@ -20,7 +20,7 @@ Image `ghcr.io/ridhoarmand/backend-nonton-yuks:latest` diterbitkan workflow GitH
 
 ## Kontrak
 
-Endpoint: `POST /v1/extract`, `Content-Type: application/json`, `Authorization: Bearer <token>`, body `{"text":"caption atau satu URL"}` atau `{"text":"...","height":720}` (batas tinggi YouTube opsional, integer positif). Tanpa field platform: server mendeteksi YouTube vs Facebook dari host URL, jadi aplikasi cukup mengirim tautan. Tanpa field platform: server mendeteksi YouTube vs Facebook dari host URL, jadi aplikasi cukup mengirim tautan. `GET /healthz` tanpa token menjawab `{"status":"ok"}` (tanda proses siap, bukan jaminan ekstraksi live bisa). Platform aktif: Facebook dan YouTube saja; tidak ada extractor generik.
+Endpoint: `POST /v1/extract`, `Content-Type: application/json`, `Authorization: Bearer <token>`, body `{"text":"caption atau satu URL"}` atau `{"text":"...","height":720}` (`height` opsional, integer positif sebagai batas maksimum tinggi video). Dengan batas ini, server hanya memilih video/muxed yang tingginya diketahui dan tidak melebihi batas; tanpa batas, format legacy Facebook dengan tinggi tidak diketahui tetap didukung. Tanpa field platform: server mendeteksi YouTube vs Facebook dari host URL, jadi aplikasi cukup mengirim tautan. `GET /healthz` tanpa token menjawab `{"status":"ok"}` (tanda proses siap, bukan jaminan ekstraksi live bisa). Platform aktif: Facebook dan YouTube saja; tidak ada extractor generik.
 
 Respons 200 (tanpa alias lama):
 
@@ -29,6 +29,8 @@ Respons 200 (tanpa alias lama):
 ```
 
 `streams` tepat satu `muxed`, atau satu `video` + satu `audio` (H264 MP4 + AAC; muxed diutamakan saat seri). `parts` berurutan lengkap: satu URL file utuh, atau init+fragmen dari yt-dlp (maks 128/stream, tiap URL <= 16 KiB, respons serial <= 256 KiB). Fragmen live/unbounded, multi-period ganti track, byte-range-only, DRM, dan HLS ditolak dengan `unsupportedMedia`.
+
+`height` pada respons adalah tinggi stream terpilih. `heights` berisi seluruh opsi tinggi yang dapat diputar, urut menurun, termasuk opsi di atas batas permintaan: muxed atau video dengan pasangan audio kompatibel. `approxBytes` menjumlahkan ukuran stream terpilih; jika ukuran salah satu stream tidak diketahui, nilainya `null`.
 
 Kegagalan: `{"error":{"code":"...","message":"..."}}` berbahasa Indonesia. Kode: `invalidUrl` (400), `unauthorized` (401), `unavailable`/`blocked`/`unsupportedMedia` (422), `network` (502), `busy` (503). Satu ekstraksi dalam satu waktu; selebihnya `busy`.
 
