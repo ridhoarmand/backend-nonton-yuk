@@ -1,0 +1,128 @@
+name: Publish backend image
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: Test, smoke, and publish
+    runs-on: ubuntu-24.04
+    if: github.ref == 'refs/heads/main'
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1 # 3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7.0.0 # 5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Run unit tests
+        run: |
+          python -m pip install -r requirements.txt
+          python -m unittest -v
+
+      - name: Validate Compose model
+        env:
+          NONTONIN_API_TOKEN: synthetic-ci-not-for-deploy-00000000
+        run: docker compose -f compose.yaml config --quiet
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4.4.0 # 99012661954931238ded8c8b007157a8430204e1
+        with:
+          platforms: arm64
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4.4.1 # f87e5991a6d7451dcb8d9637bfbc97413f497069
+
+      - name: Build native test image
+        uses: docker/build-push-action@v7.4.0 # c3c9e263c25d99ce0380d002d59b67737d91b0dc
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: localhost/backend-nonton-yuks:ci
+          cache-from: type=gha,scope=backend-nonton-yuks
+
+      - name: Smoke test container
+        env:
+          NONTONIN_API_TOKEN: ci-smoke-only-token-0000000000000000
+        run: |
+          docker run -d --name backend-nonton-yuks-ci \
+            --init --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --pids-limit 32 --memory 80m --cpus 1 \
+            --log-driver local --log-opt max-size=1m --log-opt max-file=2 \
+            -e NONTONIN_API_TOKEN -p 127.0.0.1:18080:8080 \
+            localhost/backend-nonton-yuks:ci
+          for i in $(seq 1 18); do
+            status=$(docker inspect --format '{{.State.Status}}' backend-nonton-yuks-ci)
+            if [ "$status" != running ]; then docker logs backend-nonton-yuks-ci; exit 1; fi
+            state=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' backend-nonton-yuks-ci)
+            if [ "$state" = healthy ]; then break; fi
+            if [ "$state" = unhealthy ]; then docker logs backend-nonton-yuks-ci; exit 1; fi
+            sleep 5
+          done
+          if [ "$state" != healthy ]; then docker logs backend-nonton-yuks-ci; exit 1; fi
+          NONTONIN_API_TOKEN="$NONTONIN_API_TOKEN" python3 - <<'EOF'
+          import http.client, json, os
+          token = os.environ['NONTONIN_API_TOKEN']
+          def req(method, path, body=None, auth=True):
+              c = http.client.HTTPConnection('127.0.0.1', 18080, timeout=10)
+              h = {}
+              if auth:
+                  h['Authorization'] = 'Bearer ' + token
+              if body is not None:
+                  b = json.dumps(body).encode()
+                  h['Content-Type'] = 'application/json'
+                  c.request(method, path, b, h)
+              else:
+                  c.request(method, path, None, h)
+              r = c.getresponse()
+              data = json.loads(r.read())
+              c.close()
+              return r.status, data.get('status', data.get('error', {}).get('code'))
+          assert req('GET', '/healthz', auth=False) == (200, 'ok'), 'health'
+          assert req('POST', '/v1/extract', {'text': 'https://evil.test/'}, auth=False) == (401, 'unauthorized'), 'auth'
+          assert req('POST', '/v1/extract', {}) == (400, 'invalidUrl'), 'contract'
+          print('smoke ok: health 200, unauthorized 401, invalidUrl 400')
+          EOF
+
+      - name: Remove smoke container
+        if: always()
+        run: docker rm -f backend-nonton-yuks-ci
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4.6.0 # dbcb813823bdd20940b903addbd779551569679f
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push release image
+        uses: docker/build-push-action@v7.4.0 # c3c9e263c25d99ce0380d002d59b67737d91b0dc
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/ridhoarmand/backend-nonton-yuks:latest
+            ghcr.io/ridhoarmand/backend-nonton-yuks:sha-${{ github.sha }}
+          cache-from: type=gha,scope=backend-nonton-yuks
+          cache-to: type=gha,scope=backend-nonton-yuks,mode=min

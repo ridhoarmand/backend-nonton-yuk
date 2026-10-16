@@ -1,0 +1,11 @@
+nonyuksbe.idho.eu.org {
+	request_body {
+		max_size 16384
+	}
+	reverse_proxy backend-nonton-yuks:8080 {
+		transport http {
+			dial_timeout 3s
+			response_header_timeout 55s
+		}
+	}
+}
