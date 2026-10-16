@@ -39,7 +39,7 @@ jobs:
 
       - name: Validate Compose model
         env:
-          NONTONIN_API_TOKEN: synthetic-ci-not-for-deploy-00000000
+          NONTON_YUK_API_TOKEN: synthetic-ci-not-for-deploy-00000000
         run: docker compose -f compose.yaml config --quiet
 
       - name: Set up QEMU
@@ -62,14 +62,14 @@ jobs:
 
       - name: Smoke test container
         env:
-          NONTONIN_API_TOKEN: ci-smoke-only-token-0000000000000000
+          NONTON_YUK_API_TOKEN: ci-smoke-only-token-0000000000000000
         run: |
           docker run -d --name backend-nonton-yuk-ci \
             --init --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m \
             --cap-drop ALL --security-opt no-new-privileges \
             --pids-limit 32 --memory 80m --cpus 1 \
             --log-driver local --log-opt max-size=1m --log-opt max-file=2 \
-            -e NONTONIN_API_TOKEN -p 127.0.0.1:18080:8080 \
+            -e NONTON_YUK_API_TOKEN -p 127.0.0.1:18080:8080 \
             localhost/backend-nonton-yuk:ci
           for i in $(seq 1 18); do
             status=$(docker inspect --format '{{.State.Status}}' backend-nonton-yuk-ci)
@@ -80,9 +80,9 @@ jobs:
             sleep 5
           done
           if [ "$state" != healthy ]; then docker logs backend-nonton-yuk-ci; exit 1; fi
-          NONTONIN_API_TOKEN="$NONTONIN_API_TOKEN" python3 - <<'EOF'
+          NONTON_YUK_API_TOKEN="$NONTON_YUK_API_TOKEN" python3 - <<'EOF'
           import http.client, json, os
-          token = os.environ['NONTONIN_API_TOKEN']
+          token = os.environ['NONTON_YUK_API_TOKEN']
           def req(method, path, body=None, auth=True):
               c = http.client.HTTPConnection('127.0.0.1', 18080, timeout=10)
               h = {}

@@ -5,7 +5,7 @@ services:
     expose:
       - "8080"
     environment:
-      NONTONIN_API_TOKEN: "${NONTONIN_API_TOKEN:?Set a random token in .env}"
+      NONTON_YUK_API_TOKEN: "${NONTON_YUK_API_TOKEN:?Set a random token in .env}"
     init: true
     restart: unless-stopped
     read_only: true

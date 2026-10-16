@@ -871,9 +871,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    token = os.environ.get('NONTONIN_API_TOKEN', '')
+    token = os.environ.get('NONTON_YUK_API_TOKEN', '')
     if len(token) < 32 or not token.isascii() or any(char.isspace() for char in token):
-        raise SystemExit('Set NONTONIN_API_TOKEN to a random ASCII token of at least 32 characters.')
+        raise SystemExit('Set NONTON_YUK_API_TOKEN to a random ASCII token of at least 32 characters.')
     with ApiServer(('0.0.0.0', 8080), token) as server:
         server.serve_forever()
 

@@ -8,7 +8,7 @@ Prasyarat VPS: Docker Engine + Compose, reverse proxy HTTPS (Caddy/nginx/...) de
 
 ```sh
 umask 077
-python3 -c 'import secrets; print("NONTONIN_API_TOKEN=" + secrets.token_urlsafe(32))' > .env
+python3 -c 'import secrets; print("NONTON_YUK_API_TOKEN=" + secrets.token_urlsafe(32))' > .env
 chmod 600 .env
 docker compose pull
 docker compose up -d --wait --wait-timeout 90 --remove-orphans
