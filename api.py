@@ -580,7 +580,9 @@ def result_headers(source):
     return headers
 
 
-def select_streams(info, platform, video_id, source):
+def select_streams(info, platform, video_id, source, height=None):
+    if height is not None and (isinstance(height, bool) or not isinstance(height, int) or height <= 0):
+        raise ApiError('invalidUrl')
     if not isinstance(info, dict):
         raise ApiError('unavailable')
     if info.get('_type') == 'playlist':
@@ -597,6 +599,13 @@ def select_streams(info, platform, video_id, source):
         raise ApiError('unsupportedMedia')
     described = [entry for entry in (describe_format(fmt, platform) for fmt in info.get('formats') or [])
                 if entry is not None]
+    heights = sorted({entry['height'] for entry in described
+                      if entry['kind'] in ('video', 'muxed') and entry['height'] is not None},
+                     reverse=True)
+    if height is not None:
+        described = [entry for entry in described
+                     if entry['kind'] not in ('video', 'muxed')
+                     or entry['height'] is None or entry['height'] <= height]
     muxed = sorted([entry for entry in described if entry['kind'] == 'muxed'],
                    key=lambda entry: (entry['height'] or -1, entry['fps'] or -1,
                                        entry['bitrate'], entry['legacy']), reverse=True)
@@ -631,20 +640,21 @@ def select_streams(info, platform, video_id, source):
                          'headers': headers, 'approxBytes': entry['approxBytes']})
     duration = info.get('duration')
     duration_ms = int(duration * 1000) if isinstance(duration, (int, float)) and duration >= 0 else 0
-    heights = [entry['height'] for _, entry in streams if entry['height'] is not None]
+    winner_heights = [entry['height'] for _, entry in streams if entry['height'] is not None]
     result = {'platform': platform, 'videoId': video_id, 'sourceUrl': source,
               'title': clean_text(info.get('title'), 512) or f'Video {platform} {video_id}',
               'uploader': clean_text(info.get('uploader'), 256),
               'durationMs': duration_ms,
               'thumbnailUrl': validated_thumbnail(info.get('thumbnail'), platform),
-              'height': max(heights) if heights else None,
+              'height': max(winner_heights) if winner_heights else None,
+              'heights': heights,
               'approxBytes': total, 'streams': rendered}
     if len(json.dumps(result, ensure_ascii=False, separators=(',', ':')).encode('utf-8')) > MAX_RESPONSE:
         raise ApiError('unsupportedMedia')
     return result
 
 
-def extract(text):
+def extract(text, height=None):
     platform, source, video_id = shared_url(text)
     transport = Transport()
     if platform == 'facebook':
@@ -665,7 +675,7 @@ def extract(text):
             if any(word in message for word in ('login', 'log in', '403', '429', 'checkpoint', 'captcha')):
                 raise ApiError('blocked') from None
             raise ApiError('unavailable') from None
-    return select_streams(info, platform, video_id, source)
+    return select_streams(info, platform, video_id, source, height)
 
 
 def terminate_group(pid):
@@ -688,7 +698,7 @@ def terminate_group(pid):
         pass
 
 
-def extraction_worker(pipe, text):
+def extraction_worker(pipe, text, height=None):
     if os.name == 'posix':
         try:
             os.setpgrp()
@@ -699,7 +709,7 @@ def extraction_worker(pipe, text):
         import sys
         sys.stdout = sys.stderr = sink
         try:
-            result = extract(text)
+            result = extract(text, height)
         except ApiError as exc:
             result = error_result(exc.code)
         except (OSError, http.client.HTTPException):
@@ -716,10 +726,10 @@ def extraction_worker(pipe, text):
             pipe.close()
 
 
-def run_extraction(text):
+def run_extraction(text, height=None):
     context = multiprocessing.get_context('spawn')
     receiver, sender = context.Pipe(duplex=False)
-    process = context.Process(target=extraction_worker, args=(sender, text), daemon=True)
+    process = context.Process(target=extraction_worker, args=(sender, text, height), daemon=True)
     started = time.monotonic()
     try:
         process.start()
@@ -828,9 +838,12 @@ class Handler(BaseHTTPRequestHandler):
             if len(raw) != size:
                 raise ValueError
             body = json.loads(raw)
-            if not isinstance(body, dict) or set(body) != {'text'}:
+            if not isinstance(body, dict) or set(body) not in ({'text'}, {'text', 'height'}):
                 raise ValueError
             shared_url(body['text'])
+            height = body.get('height')
+            if 'height' in body and (isinstance(height, bool) or not isinstance(height, int) or height <= 0):
+                raise ValueError
         except (ValueError, UnicodeError, RecursionError, ApiError, OSError):
             self.send_json(400, error_result('invalidUrl'))
             return
@@ -838,7 +851,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(503, error_result('busy'))
             return
         try:
-            result = run_extraction(body['text'])
+            result = run_extraction(body['text']) if 'height' not in body else run_extraction(body['text'], body['height'])
         except Exception:
             result = error_result('unavailable')
         finally:

@@ -330,7 +330,7 @@ class ExtractFlowTests(unittest.TestCase):
         body = json.dumps(result, ensure_ascii=False, separators=(',', ':')).encode()
         self.assertLessEqual(len(body), api.MAX_RESPONSE)
         self.assertEqual(set(result), {'platform', 'videoId', 'sourceUrl', 'title', 'uploader',
-                                       'durationMs', 'thumbnailUrl', 'height', 'approxBytes', 'streams'})
+                                       'durationMs', 'thumbnailUrl', 'height', 'heights', 'approxBytes', 'streams'})
         kinds = sorted(stream['kind'] for stream in result['streams'])
         self.assertIn(kinds, (['muxed'], ['audio', 'video']))
         for stream in result['streams']:
@@ -347,6 +347,61 @@ class ExtractFlowTests(unittest.TestCase):
             api.select_streams({'id': YT_ID, 'formats': [bulky_video, bulky_audio]},
                                'youtube', YT_ID, YT_WATCH)
         self.assertEqual(caught.exception.code, 'unsupportedMedia')
+
+
+class HeightTests(unittest.TestCase):
+    def multi_yt(self):
+        return {'id': YT_ID, 'title': 'Synthetic YouTube', 'duration': 19.0,
+                'uploader': 'Synthetic channel',
+                'thumbnail': 'https://i.ytimg.com/vi/synthetic/hqdefault.jpg',
+                'formats': [
+                    yt_format(YT_VIDEO, vcodec='avc1.64001F', acodec='none',
+                              height=1080, fps=30, format_id='dash1080'),
+                    yt_format(YT_VIDEO, vcodec='avc1.64001F', acodec='none',
+                              height=360, fps=30, format_id='dash360'),
+                    yt_format(YT_AUDIO, vcodec='none', acodec='mp4a.40.2', height=None,
+                              fps=None, abr=128, ext='m4a', format_id='audio'),
+                ]}
+
+    def test_heights_present_and_descending(self):
+        result = api.select_streams(self.multi_yt(), 'youtube', YT_ID, YT_WATCH)
+        self.assertEqual(result['heights'], [1080, 360])
+        self.assertEqual(result['height'], 1080)
+
+    def test_height_filter_picks_lower_variant(self):
+        before = api.select_streams(self.multi_yt(), 'youtube', YT_ID, YT_WATCH)
+        result = api.select_streams(self.multi_yt(), 'youtube', YT_ID, YT_WATCH, 360)
+        self.assertEqual(result['height'], 360)
+        self.assertLessEqual(result['height'], 360)
+        # Full option list still advertised alongside the filtered winner.
+        self.assertEqual(result['heights'], [1080, 360])
+        self.assertEqual([stream['kind'] for stream in result['streams']], ['video', 'audio'])
+
+    def test_invalid_height_rejected(self):
+        for bad in (0, -1, '720', True, False, 7.5, None.__class__):
+            with self.subTest(bad=bad):
+                with self.assertRaises(api.ApiError) as caught:
+                    api.select_streams(self.multi_yt(), 'youtube', YT_ID, YT_WATCH, bad)
+                self.assertEqual(caught.exception.code, 'invalidUrl')
+
+    def test_default_winner_unchanged(self):
+        before = api.select_streams(self.multi_yt(), 'youtube', YT_ID, YT_WATCH)
+        after = api.select_streams(self.multi_yt(), 'youtube', YT_ID, YT_WATCH, None)
+        self.assertEqual(after['height'], before['height'])
+        self.assertEqual(after['approxBytes'], before['approxBytes'])
+        self.assertEqual([s['kind'] for s in after['streams']],
+                         [s['kind'] for s in before['streams']])
+
+    def test_height_filter_empty_result_unsupported(self):
+        info = {'id': YT_ID, 'formats': [
+            yt_format(YT_VIDEO, vcodec='avc1.64001F', acodec='none', height=1080, fps=30),
+            yt_format(YT_AUDIO, vcodec='none', acodec='mp4a.40.2', height=None, fps=None,
+                      abr=128, ext='m4a', format_id='audio')]}
+        with self.assertRaises(api.ApiError) as caught:
+            # No video variant reports height None here; requesting below 1080 empties video+muxed.
+            api.select_streams(info, 'youtube', YT_ID, YT_WATCH, 144)
+        self.assertEqual(caught.exception.code, 'unsupportedMedia')
+
 
 
 @unittest.skipUnless(os.name == 'posix' and subprocess.run(
@@ -438,6 +493,29 @@ class HttpContractTests(unittest.TestCase):
                 status, body = self.get(path)
                 self.assertEqual((status, body['error']['code']), (405, 'invalidUrl'))
             extract.assert_not_called()
+
+
+class HttpHeightTests(HttpContractTests):
+    def runTest(self):
+        pass
+
+    def test_http_height_validation_never_extracts(self):
+        with patch('api.run_extraction') as extract:
+            for payload in ('{"text": %s, "height": 0}' % json.dumps(YT_WATCH),
+                            '{"text": %s, "height": -1}' % json.dumps(YT_WATCH),
+                            '{"text": %s, "height": "720"}' % json.dumps(YT_WATCH),
+                            '{"text": %s, "height": true}' % json.dumps(YT_WATCH),
+                            '{"text": %s, "height": 720, "extra": 1}' % json.dumps(YT_WATCH)):
+                with self.subTest(payload=payload):
+                    self.assertEqual(self.post(payload)[0], 400)
+            extract.assert_not_called()
+
+    def test_http_height_passed_through(self):
+        result = api.select_streams(synthetic_yt(), 'youtube', YT_ID, YT_WATCH)
+        with patch('api.run_extraction', return_value=result) as extract:
+            status, body = self.post(json.dumps({'text': YT_WATCH, 'height': 720}))
+            self.assertEqual(status, 200)
+            extract.assert_called_once_with(YT_WATCH, 720)
 
 
 if __name__ == '__main__':

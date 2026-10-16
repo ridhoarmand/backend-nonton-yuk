@@ -4,3 +4,6 @@
 .venv/
 __pycache__/
 *.pyc
+
+# Deploy-local reverse proxy (domain + TLS milik operator, tidak ikut repo).
+Caddyfile

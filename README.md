@@ -2,9 +2,9 @@
 
 Backend ekstraksi URL-only untuk aplikasi Nontonin Dulu. Python stdlib + yt-dlp, tanpa framework web, database, browser, FFmpeg, atau penyimpanan video. Server hanya membaca metadata/manifest dan menjawab deskriptor CDN; **tidak pernah** mengambil byte media (tanpa preflight/HEAD/Range ke CDN). Ponsel yang mentransfer video.
 
-## Deploy produksi (VPS + Caddy milik Anda)
+## Deploy produksi (Docker + reverse proxy milik Anda)
 
-Prasyarat VPS: Docker Engine + Compose, network external `proxy-tier` yang sama dengan Caddy (`docker network create proxy-tier` sekali saja), DNS A/AAAA `nonyuksbe.idho.eu.org` ke server, dan port 80/443 ke Caddy.
+Prasyarat VPS: Docker Engine + Compose, reverse proxy HTTPS (Caddy/nginx/...) dengan batas body ~16 KiB, network external `proxy-tier` yang sama dengan proxy (`docker network create proxy-tier` sekali saja), dan DNS A/AAAA domain Anda ke server.
 
 ```sh
 umask 077
@@ -14,18 +14,18 @@ docker compose pull
 docker compose up -d --wait --wait-timeout 90 --remove-orphans
 ```
 
-Salin blok `Caddyfile` di repo ini ke Caddyfile milik Anda (service Caddy wajib di network `proxy-tier` juga), lalu validate/reload Caddy. Origin aplikasi: `https://nonyuksbe.idho.eu.org`; token tetap di pengaturan aplikasi, tidak di source code. Jangan commit token atau menampilkannya di log/terminal.
+Contoh `Caddyfile` tidak ikut repo (gitignored, berisi domain operator); tulis blok reverse proxy sendiri ke backend `backend-nonton-yuks:8080`, lalu validate/reload proxy. Origin aplikasi = domain Anda; token dari `.env` server dimasukkan sekali ke build aplikasi (env `NONTON_YUKS_API_TOKEN`), tidak di source code. Jangan commit token atau menampilkannya di log/terminal.
 
 Image `ghcr.io/ridhoarmand/backend-nonton-yuks:latest` diterbitkan workflow GitHub tiap push `main` (tes + smoke + build amd64/arm64). Catatan: package GHCR baru default **private**; sekali saja buka Package settings → Change visibility → Public agar pull anonim bisa jalan.
 
 ## Kontrak
 
-Endpoint: `POST /v1/extract`, `Content-Type: application/json`, `Authorization: Bearer <token>`, body tepat `{"text":"caption atau satu URL"}`. Tanpa field platform: server mendeteksi YouTube vs Facebook dari host URL, jadi aplikasi cukup mengirim tautan. `GET /healthz` tanpa token menjawab `{"status":"ok"}` (tanda proses siap, bukan jaminan ekstraksi live bisa). Platform aktif: Facebook dan YouTube saja; tidak ada extractor generik.
+Endpoint: `POST /v1/extract`, `Content-Type: application/json`, `Authorization: Bearer <token>`, body `{"text":"caption atau satu URL"}` atau `{"text":"...","height":720}` (batas tinggi YouTube opsional, integer positif). Tanpa field platform: server mendeteksi YouTube vs Facebook dari host URL, jadi aplikasi cukup mengirim tautan. Tanpa field platform: server mendeteksi YouTube vs Facebook dari host URL, jadi aplikasi cukup mengirim tautan. `GET /healthz` tanpa token menjawab `{"status":"ok"}` (tanda proses siap, bukan jaminan ekstraksi live bisa). Platform aktif: Facebook dan YouTube saja; tidak ada extractor generik.
 
 Respons 200 (tanpa alias lama):
 
 ```json
-{"platform":"youtube","videoId":"jNQXAC9IVRw","sourceUrl":"https://www.youtube.com/watch?v=jNQXAC9IVRw","title":"...","uploader":null,"durationMs":19000,"thumbnailUrl":null,"height":240,"approxBytes":null,"streams":[{"kind":"video","parts":["https://...googlevideo.com/..."],"headers":{"User-Agent":"..."},"approxBytes":null},{"kind":"audio","parts":["https://...googlevideo.com/..."],"headers":{"User-Agent":"..."},"approxBytes":null}]}
+{"platform":"youtube","videoId":"jNQXAC9IVRw","sourceUrl":"https://www.youtube.com/watch?v=jNQXAC9IVRw","title":"...","uploader":null,"durationMs":19000,"thumbnailUrl":null,"height":240,"heights":[1080,720,480,360,240],"approxBytes":null,"streams":[{"kind":"video","parts":["https://...googlevideo.com/..."],"headers":{"User-Agent":"..."},"approxBytes":null},{"kind":"audio","parts":["https://...googlevideo.com/..."],"headers":{"User-Agent":"..."},"approxBytes":null}]}
 ```
 
 `streams` tepat satu `muxed`, atau satu `video` + satu `audio` (H264 MP4 + AAC; muxed diutamakan saat seri). `parts` berurutan lengkap: satu URL file utuh, atau init+fragmen dari yt-dlp (maks 128/stream, tiap URL <= 16 KiB, respons serial <= 256 KiB). Fragmen live/unbounded, multi-period ganti track, byte-range-only, DRM, dan HLS ditolak dengan `unsupportedMedia`.
